@@ -53,9 +53,12 @@ const nav=document.querySelector('nav'), hint=document.querySelector('#hint');
 const scene=new Image();scene.src='winter.jpg';
 const point=([x,y])=>[68+74*x,89+61*y];
 const flakes=Array.from({length:90},(_,i)=>({x:(i*197)%960,y:(i*119)%540,r:0.7+(i%5)*0.44,s:9+i%27}));
-let index=0, angles, result, badges=[];
+let index=0, angles, result, badges=[], litAt=null;
+const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 function refresh(){
   result=trace(levels[index],angles);
+  if(result.won && litAt===null) litAt=performance.now();
+  if(!result.won) litAt=null;
   status.textContent=result.won?(index===levels.length-1?'Ёлка сияет! Северное сияние вернулось.':'Ёлка зажглась!'):`Уровень ${index+1} из ${levels.length}`;
   next.hidden=!result.won||index===levels.length-1;
   badges.forEach((button,i)=>button.title=`Наклон ${angles[i]*22.5}°`);
@@ -85,8 +88,10 @@ function glow(x,y,r,color){
 // Paint the aurora once, with uneven vertical folds and soft edges.
 const aurora=document.createElement('canvas');
 aurora.width=960;aurora.height=540;
-const sky=aurora.getContext('2d');
+
 function paintCurtain(offset, phase, color, strength){
+  const layer=aurora.cloneNode();
+  const sky=layer.getContext('2d');
   for(let x=0;x<960;x+=2){
     const u=x/960;
     const fold=Math.sin(u*14+phase)*22+Math.sin(u*37+phase)*6;
@@ -102,10 +107,25 @@ function paintCurtain(offset, phase, color, strength){
     fade.addColorStop(1,'transparent');
     sky.fillStyle=fade;sky.fillRect(x,base-height,2,height+25);
   }
+  return layer;
 }
-paintCurtain(14,1.5,'158,132,213',0.32);
-paintCurtain(0,0.8,'102,194,176',0.63);
-paintCurtain(-6,0.85,'157,228,199',0.34);
+const curtains=[
+  paintCurtain(14,1.5,'158,132,213',0.32),
+  paintCurtain(0,0.8,'102,194,176',0.63),
+  paintCurtain(-6,0.85,'157,228,199',0.34)
+];
+function drawAurora(time){
+  const elapsed=Math.max(0,(time-litAt)/1000);
+  const progress=reducedMotion.matches?1:Math.min(1,elapsed/2.4);
+  const reveal=progress*progress*(3-2*progress);
+  const drift=reducedMotion.matches?0:elapsed;
+  curtains.forEach((layer,i)=>{
+    const wave=drift*(0.55+i*0.12)+i*1.8;
+    c.globalAlpha=reveal*(0.78+0.22*Math.sin(wave));
+    c.drawImage(layer,Math.sin(wave)*6,Math.sin(wave*0.8)*4);
+  });
+  c.globalAlpha=1;
+}
 function frame(time){
   const t=time/1000;
   c.fillStyle='#142641';c.fillRect(0,0,960,540);
@@ -113,7 +133,7 @@ function frame(time){
   c.fillStyle='#09132950';c.fillRect(0,0,746,540);
   if(result.won){
     c.save();c.globalCompositeOperation='screen';
-    c.drawImage(aurora,0,0);
+    drawAurora(time);
     [[808,186,'#ffe2a2'],[774,247,'#ff709b'],[850,245,'#75e9db'],[806,283,'#ffc668'],[765,328,'#8ba9ff'],[864,322,'#ff93b7'],[819,358,'#ffd299']].forEach(([x,y,color],i)=>{
       glow(x,y,19+Math.sin(t*2+i)*4,color);dot(x,y,3,'#fff4de');
     });
