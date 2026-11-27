@@ -1,121 +1,123 @@
 <!doctype html>
 <html lang="ru">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Верни сияние</title>
 <style>
-*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;background:#09152a;color:#fff4d8;font:16px/1.5 system-ui,sans-serif;padding:16px}main{width:min(100%,860px)}h1{font-size:clamp(30px,6vw,58px);line-height:1;margin:0 0 10px}p{margin:8px 0 14px;color:#d2e3f4}canvas{width:100%;display:block;border-radius:20px;border:1px solid #486287;touch-action:manipulation}footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}button{font:inherit;color:#fff4d8;background:#233958;border:1px solid #6788aa;border-radius:10px;padding:8px 12px;cursor:pointer}button:focus-visible{outline:3px solid #ffd375}#status{margin-left:auto;color:#ffe09b}
+*{box-sizing:border-box}body{margin:0;padding:clamp(12px,3vw,32px);min-height:100svh;background:radial-gradient(ellipse at top,#213951,#090f22 72%);color:#fff7e8;font:16px/1.45 system-ui,sans-serif}main{max-width:1100px;margin:auto}header{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px}h1{font:600 clamp(32px,6vw,64px)/1 Georgia,serif;margin:0}p{margin:8px 0 0;color:#d3e0ef}button{font:inherit;color:inherit;background:#182940;border:1px solid #647e99;border-radius:11px;padding:8px 12px;cursor:pointer}button:hover{background:#294260}button:focus-visible{outline:3px solid #ffd487}button[aria-current=true],#next{background:#ffdd9b;color:#162235;border-color:#ffdd9b}button[hidden]{display:none}nav,footer,#controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}canvas{width:100%;display:block;border:1px solid #56718a;border-radius:18px;background:#162c49;touch-action:manipulation}footer{justify-content:space-between;margin-top:12px}#status{color:#ffdf9b}.actions{display:flex;gap:8px}#hint{min-height:1.5em}
 </style>
 <main>
-<h1>Верни сияние</h1>
-<p>Поворачивай зеркала, чтобы луч зажёг три игрушки и звезду на ёлке.</p>
-<canvas width="840" height="480" aria-label="Поле с фонарём, зеркалами и ёлкой"></canvas>
-<footer><button id="reset">Начать заново</button><span id="status" role="status"></span></footer>
+<header><div><h1>Верни сияние</h1><p>Поворачивай зеркала, чтобы направить луч на ёлку.</p></div><nav aria-label="Уровни"></nav></header>
+<canvas width="960" height="540" aria-label="Зимнее поле с фонарём, зеркалами и ёлкой"></canvas>
+<footer><span id="status" role="status"></span><div class="actions"><button id="reset">Сбросить</button><button id="next" hidden>Дальше</button></div></footer>
+<p id="hint"></p><div id="controls" aria-label="Поворот зеркал"></div>
 </main>
 <script>
-const canvas = document.querySelector('canvas');
-const ctx = canvas.getContext('2d');
-const status = document.querySelector('#status');
-const footer = document.querySelector('footer');
-const mirrors = [[2,4],[2,2],[5,2],[5,3],[7,3]];
-const toys = [[7,3],[7,2],[7,1]];
-const star = [7,0];
-const start = [0,4];
-const solution = [true,true,false,false,true];
-const initial = [false,false,true,true,false];
-let angles = [...initial];
-const same = (a,b) => a[0] === b[0] && a[1] === b[1];
-const point = ([x,y]) => [74+x*97,63+y*83];
-function trace(settings) {
-  let [x,y] = start;
-  let dx = 1, dy = 0;
-  const path = [start], lit = new Set();
-  let won = false;
-  for(let i=0;i<100;i++){
-    x+=dx; y+=dy;
-    const cell=[x,y];
-    path.push(cell);
-    if(x<0 || x>7 || y<0 || y>4) break;
-    toys.forEach((toy,index)=>{if(same(toy,cell)) lit.add(index)});
-    if(same(star,cell)){won=lit.size===toys.length;break}
-    const m=mirrors.findIndex(mirror=>same(mirror,cell));
-    if(m>=0) [dx,dy]=settings[m]?[-dy,-dx]:[dy,dx];
+const directions=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+const start=[0,5];
+const levels=[
+  {route:[[6,5],[10,1]], rocks:[], hint:'Нажимай на зеркало, пока луч не попадёт в звезду.'},
+  {route:[[3,5],[7,1],[10,1]],rocks:[[6,3]],hint:'Лучи могут идти прямо и по диагонали.'},
+  {route:[[2,5],[2,2],[7,2],[7,4],[10,1]],rocks:[[5,5],[4,4]],hint:'Камни останавливают луч. Найди путь вокруг них.'},
+  {route:[[2,5],[2,1],[5,1],[5,4],[8,4],[8,1],[10,1]],rocks:[[4,5],[6,2],[9,2]],hint:'Начни у фонаря и проследи путь луча до ёлки.'},
+  {route:[[1,5],[4,2],[4,0],[7,0],[7,3],[9,3],[9,2],[10,1]],rocks:[[3,5],[5,3],[8,2],[8,4]],hint:'Настрой все семь зеркал, чтобы вернуть сияние.'}
+];
+const same=(a,b)=>a[0]===b[0]&&a[1]===b[1];
+const dir=(a,b)=>directions.findIndex(d=>same(d,[Math.sign(b[0]-a[0]),Math.sign(b[1]-a[1])]));
+for(const level of levels){
+  level.goal=level.route.at(-1);
+  level.mirrors=level.route.slice(0,-1);
+  const route=[start,...level.route];
+  level.solution=level.mirrors.map((mirror,i)=>(dir(route[i],mirror)+dir(mirror,route[i+2]))%8);
+  level.initial=level.solution.map((a,i)=>(a+7-(i%3))%8);
+}
+function trace(level,angles){
+  let cell=start,d=0;
+  const path=[cell],seen=new Set();
+  for(let i=0;i<250;i++){
+    const [dx,dy]=directions[d];
+    cell=[cell[0]+dx,cell[1]+dy];path.push(cell);
+    if(same(cell,level.goal)) return {path,won:true};
+    if(cell[0]<0||cell[0]>11||cell[1]<0||cell[1]>6||level.rocks.some(r=>same(r,cell))) break;
+    const key=cell.join(',')+':'+d;
+    if(seen.has(key)) break;
+    seen.add(key);
+    const mirror=level.mirrors.findIndex(m=>same(m,cell));
+    if(mirror>=0) d=(angles[mirror]-d+8)%8;
   }
-  return {path,lit,won};
+  return {path,won:false};
 }
-function circle(x,y,r,color){
-  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+const canvas=document.querySelector('canvas'), c=canvas.getContext('2d');
+const status=document.querySelector('#status'), next=document.querySelector('#next'), controls=document.querySelector('#controls');
+const nav=document.querySelector('nav'), hint=document.querySelector('#hint');
+const scene=new Image();scene.src='winter.jpg';
+const point=([x,y])=>[68+74*x,89+61*y];
+const flakes=Array.from({length:90},(_,i)=>({x:(i*197)%960,y:(i*119)%540,r:0.7+(i%5)*0.44,s:9+i%27}));
+let index=0, angles, result, badges=[];
+function refresh(){
+  result=trace(levels[index],angles);
+  status.textContent=result.won?(index===levels.length-1?'Ёлка сияет! Северное сияние вернулось.':'Ёлка зажглась!'):`Уровень ${index+1} из ${levels.length}`;
+  next.hidden=!result.won||index===levels.length-1;
+  badges.forEach((button,i)=>button.title=`Наклон ${angles[i]*22.5}°`);
 }
-function polygon(points,color){
-  ctx.beginPath(); points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));
-  ctx.closePath();ctx.fillStyle=color;ctx.fill();
-}
-function draw(){
-  const {path,lit,won}=trace(angles);
-  const sky=ctx.createLinearGradient(0,0,0,480);
-  sky.addColorStop(0,'#0a1530');sky.addColorStop(1,'#244369');
-  ctx.fillStyle=sky;ctx.fillRect(0,0,840,480);
-  if(won){
-    for(let i=0;i<17;i++){
-      ctx.beginPath();ctx.moveTo(-50,132+i*3);
-      ctx.bezierCurveTo(270,290+i*4,385,-80+i*3,880,75+i*6);
-      ctx.strokeStyle=i<9?'#62fcd034':'#a795ff32';ctx.lineWidth=12;ctx.stroke();
-    }
-  }
-  for(let i=0;i<100;i++) circle((i*197+29)%840,(i*113+17)%460,i%7===0?1.7:0.8,'#c6e4ff88');
-  polygon([[0,419],[180,408],[400,438],[650,401],[840,424],[840,480],[0,480]],'#b5d2e8');
-  const [tx,ty]=point(star);
-  ctx.fillStyle='#735049';ctx.fillRect(tx-13,370,26,52);
-  for(let i=3;i>=0;i--){
-    const top=ty+17+i*70, w=32+i*18;
-    polygon([[tx,top],[tx-w,top+122],[tx+w,top+122]],i%2?'#236454':'#2e7961');
-  }
-  [[683,414,38,'#c25471'],[731,402,46,'#7359ad'],[784,419,35,'#bb6347']].forEach(([x,y,w,c])=>{
-    ctx.fillStyle=c;ctx.fillRect(x,y,w,27);ctx.fillStyle='#f6cc81';ctx.fillRect(x+w/2-3,y,6,27);ctx.fillRect(x,y+7,w,4);
+function turn(i){angles[i]=(angles[i]+1)%8;refresh()}
+function load(i){
+  index=i;angles=[...levels[i].initial];hint.textContent=levels[i].hint;
+  [...nav.children].forEach((button,n)=>button.setAttribute('aria-current',String(n===i)));
+  badges=angles.map((_,m)=>{
+    const button=document.createElement('button');button.textContent=`Зеркало ${m+1}`;button.onclick=()=>turn(m);return button;
   });
-  toys.forEach((toy,i)=>{
-    const [x,y]=point(toy), color=['#ff8ab3','#8df2de','#ffca72'][i];
-    ctx.save();
-    if(lit.has(i)){ctx.shadowBlur=24;ctx.shadowColor=color;}
-    circle(x+25,y,14,lit.has(i)?color:'#61778d');
-    ctx.restore();
-    ctx.strokeStyle=lit.has(i)?color:'#61778d';ctx.lineWidth=2;
-    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+12,y);ctx.stroke();
-  });
-  ctx.save();ctx.shadowColor='#ffca65';ctx.shadowBlur=16;ctx.strokeStyle='#ffe29a';ctx.lineWidth=4;
-  ctx.beginPath();path.map(point).forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();ctx.restore();
-  const [sx,sy]=point(start);
-  circle(sx,sy,18,'#ffcb68');circle(sx,sy,9,'#fff2b9');
-  mirrors.forEach((cell,i)=>{
-    const [x,y]=point(cell), s=angles[i]?1:-1;
-    circle(x,y,26,'#172e4a');ctx.strokeStyle='#aaceea';ctx.lineWidth=2;ctx.stroke();
-    ctx.beginPath();ctx.moveTo(x-15,y+15*s);ctx.lineTo(x+15,y-15*s);ctx.strokeStyle='#ebf8ff';ctx.lineWidth=6;ctx.lineCap='round';ctx.stroke();
-    circle(x-23,y+22,10,'#304d73');ctx.font='bold 12px system-ui';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText(i+1,x-23,y+26);
-  });
-  ctx.save();
-  if(won){ctx.shadowColor='#ffd573';ctx.shadowBlur=30}
-  polygon(Array.from({length:10},(_,i)=>{
-    const a=i*Math.PI/5-Math.PI/2,r=i%2?10:24;
-    return [tx+Math.cos(a)*r,ty+Math.sin(a)*r];
-  }),won?'#ffe292':'#7890a8');ctx.restore();
-  status.textContent=won?'Ёлка горит! Сияние вернулось.':`Игрушки: ${lit.size} из ${toys.length}`;
+  controls.replaceChildren(...badges);refresh();
 }
-function turn(i){angles[i]=!angles[i];draw()}
-mirrors.forEach((_,i)=>{
-  const button=document.createElement('button');
-  button.textContent=i+1;
-  button.setAttribute('aria-label',`Повернуть зеркало ${i+1}`);
-  button.onclick=()=>turn(i);
-  footer.insertBefore(button,status);
-});
-canvas.addEventListener('click',event=>{
-  const bounds=canvas.getBoundingClientRect();
-  const x=(event.clientX-bounds.left)*840/bounds.width;
-  const y=(event.clientY-bounds.top)*480/bounds.height;
-  const i=mirrors.findIndex(cell=>{const [a,b]=point(cell);return Math.hypot(a-x,b-y)<32});
+levels.forEach((_,i)=>{const button=document.createElement('button');button.textContent=i+1;button.setAttribute('aria-label',`Уровень ${i+1}`);button.onclick=()=>load(i);nav.append(button)});
+next.onclick=()=>load(index+1);
+document.querySelector('#reset').onclick=()=>load(index);
+canvas.onclick=event=>{
+  const r=canvas.getBoundingClientRect(), x=(event.clientX-r.left)*960/r.width,y=(event.clientY-r.top)*540/r.height;
+  const i=levels[index].mirrors.findIndex(m=>{const [a,b]=point(m);return Math.hypot(a-x,b-y)<31});
   if(i>=0)turn(i);
-});
-document.querySelector('#reset').onclick=()=>{angles=[...initial];draw()};
-if(!trace(solution).won || trace(initial).won) throw Error('Некорректная раскладка');
-draw();
+};
+function dot(x,y,r,color){c.fillStyle=color;c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill()}
+function glow(x,y,r,color){
+  const g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,color);g.addColorStop(1,'transparent');
+  dot(x,y,r,g);
+}
+function frame(time){
+  const t=time/1000;
+  c.fillStyle='#142641';c.fillRect(0,0,960,540);
+  if(scene.complete&&scene.naturalWidth)c.drawImage(scene,0,0,960,540);
+  c.fillStyle='#09132950';c.fillRect(0,0,746,540);
+  if(result.won){
+    c.save();c.globalCompositeOperation='screen';
+    for(let i=0;i<7;i++){
+      c.strokeStyle=i<4?'#5ed8a435':'#8f76d735';c.lineWidth=15;
+      c.beginPath();c.moveTo(-40,111+i*8);c.bezierCurveTo(295,-75+i*10,435,210+i*6,990,24+i*9);c.stroke();
+    }
+    [[808,186,'#ffe2a2'],[774,247,'#ff709b'],[850,245,'#75e9db'],[806,283,'#ffc668'],[765,328,'#8ba9ff'],[864,322,'#ff93b7'],[819,358,'#ffd299']].forEach(([x,y,color],i)=>{
+      glow(x,y,19+Math.sin(t*2+i)*4,color);dot(x,y,3,'#fff4de');
+    });
+    c.restore();
+  }
+  for(const f of flakes) dot((f.x+t*f.s*0.32)%960,(f.y+t*f.s)%540,f.r,'#eff8ff9e');
+  for(const rock of levels[index].rocks){
+    const [x,y]=point(rock);c.font='42px system-ui';c.textAlign='center';c.textBaseline='middle';c.fillText('🪨',x,y);
+  }
+  const ray=result.path.map(point);
+  c.save();c.shadowBlur=23;c.shadowColor='#ffcf79';c.lineCap='round';c.lineJoin='round';
+  c.strokeStyle='#ffcc72';c.lineWidth=7;c.beginPath();ray.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.stroke();
+  c.strokeStyle='#fff4cb';c.lineWidth=2;c.stroke();c.restore();
+  const [sx,sy]=point(start);
+  glow(sx,sy,32,'#ffc571');c.font='32px system-ui';c.textBaseline='middle';c.textAlign='center';c.fillText('🏮',sx,sy);
+  levels[index].mirrors.forEach((m,i)=>{
+    const [x,y]=point(m), a=angles[i]*Math.PI/8;
+    dot(x,y,24,'#142941ed');c.strokeStyle='#9cc5db';c.lineWidth=1.5;c.stroke();
+    c.save();c.translate(x,y);c.rotate(a);c.fillStyle='#e1f6ff';c.fillRect(-17,-3,34,6);c.fillStyle='#7eaed0';c.fillRect(-17,3,34,3);c.restore();
+    dot(x-18,y+18,10,'#294860');c.fillStyle='#fff';c.font='bold 12px system-ui';c.fillText(i+1,x-18,y+18);
+  });
+  const [gx,gy]=point(levels[index].goal);
+  if(result.won)glow(gx,gy,48,'#ffd783');
+  c.font='34px Georgia';c.fillStyle=result.won?'#fff1a7':'#ffd997';c.fillText('✦',gx,gy);
+  requestAnimationFrame(frame);
+}
+load(0);requestAnimationFrame(frame);
 </script>
