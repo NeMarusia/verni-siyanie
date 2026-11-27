@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Верни сияние</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;background:#09152a;color:#fff4d8;font:16px/1.5 system-ui,sans-serif;padding:16px}main{width:min(100%,860px)}h1{font-size:clamp(30px,6vw,58px);line-height:1;margin:0 0 10px}p{margin:8px 0 14px;color:#d2e3f4}canvas{width:100%;display:block;border-radius:20px;border:1px solid #486287;touch-action:manipulation}footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}button{font:inherit;color:#fff4d8;background:#233958;border:1px solid #6788aa;border-radius:10px;padding:8px 12px;cursor:pointer}button:focus-visible{outline:3px solid #ffd375}#status{margin-left:auto;color:#ffe09b}
+</style>
+<main>
+<h1>Верни сияние</h1>
+<p>Поворачивай зеркала, чтобы луч зажёг три игрушки и звезду на ёлке.</p>
+<canvas width="840" height="480" aria-label="Поле с фонарём, зеркалами и ёлкой"></canvas>
+<footer><button id="reset">Начать заново</button><span id="status" role="status"></span></footer>
+</main>
+<script>
+const canvas = document.querySelector('canvas');
+const ctx = canvas.getContext('2d');
+const status = document.querySelector('#status');
+const footer = document.querySelector('footer');
+const mirrors = [[2,4],[2,2],[5,2],[5,3],[7,3]];
+const toys = [[7,3],[7,2],[7,1]];
+const star = [7,0];
+const start = [0,4];
+const solution = [true,true,false,false,true];
+const initial = [false,false,true,true,false];
+let angles = [...initial];
+const same = (a,b) => a[0] === b[0] && a[1] === b[1];
+const point = ([x,y]) => [74+x*97,63+y*83];
+function trace(settings) {
+  let [x,y] = start;
+  let dx = 1, dy = 0;
+  const path = [start], lit = new Set();
+  let won = false;
+  for(let i=0;i<100;i++){
+    x+=dx; y+=dy;
+    const cell=[x,y];
+    path.push(cell);
+    if(x<0 || x>7 || y<0 || y>4) break;
+    toys.forEach((toy,index)=>{if(same(toy,cell)) lit.add(index)});
+    if(same(star,cell)){won=lit.size===toys.length;break}
+    const m=mirrors.findIndex(mirror=>same(mirror,cell));
+    if(m>=0) [dx,dy]=settings[m]?[-dy,-dx]:[dy,dx];
+  }
+  return {path,lit,won};
+}
+function circle(x,y,r,color){
+  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+}
+function polygon(points,color){
+  ctx.beginPath(); points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));
+  ctx.closePath();ctx.fillStyle=color;ctx.fill();
+}
+function draw(){
+  const {path,lit,won}=trace(angles);
+  const sky=ctx.createLinearGradient(0,0,0,480);
+  sky.addColorStop(0,'#0a1530');sky.addColorStop(1,'#244369');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,840,480);
+  if(won){
+    for(let i=0;i<17;i++){
+      ctx.beginPath();ctx.moveTo(-50,132+i*3);
+      ctx.bezierCurveTo(270,290+i*4,385,-80+i*3,880,75+i*6);
+      ctx.strokeStyle=i<9?'#62fcd034':'#a795ff32';ctx.lineWidth=12;ctx.stroke();
+    }
+  }
+  for(let i=0;i<100;i++) circle((i*197+29)%840,(i*113+17)%460,i%7===0?1.7:0.8,'#c6e4ff88');
+  polygon([[0,419],[180,408],[400,438],[650,401],[840,424],[840,480],[0,480]],'#b5d2e8');
+  const [tx,ty]=point(star);
+  ctx.fillStyle='#735049';ctx.fillRect(tx-13,370,26,52);
+  for(let i=3;i>=0;i--){
+    const top=ty+17+i*70, w=32+i*18;
+    polygon([[tx,top],[tx-w,top+122],[tx+w,top+122]],i%2?'#236454':'#2e7961');
+  }
+  [[683,414,38,'#c25471'],[731,402,46,'#7359ad'],[784,419,35,'#bb6347']].forEach(([x,y,w,c])=>{
+    ctx.fillStyle=c;ctx.fillRect(x,y,w,27);ctx.fillStyle='#f6cc81';ctx.fillRect(x+w/2-3,y,6,27);ctx.fillRect(x,y+7,w,4);
+  });
+  toys.forEach((toy,i)=>{
+    const [x,y]=point(toy), color=['#ff8ab3','#8df2de','#ffca72'][i];
+    ctx.save();
+    if(lit.has(i)){ctx.shadowBlur=24;ctx.shadowColor=color;}
+    circle(x+25,y,14,lit.has(i)?color:'#61778d');
+    ctx.restore();
+    ctx.strokeStyle=lit.has(i)?color:'#61778d';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+12,y);ctx.stroke();
+  });
+  ctx.save();ctx.shadowColor='#ffca65';ctx.shadowBlur=16;ctx.strokeStyle='#ffe29a';ctx.lineWidth=4;
+  ctx.beginPath();path.map(point).forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();ctx.restore();
+  const [sx,sy]=point(start);
+  circle(sx,sy,18,'#ffcb68');circle(sx,sy,9,'#fff2b9');
+  mirrors.forEach((cell,i)=>{
+    const [x,y]=point(cell), s=angles[i]?1:-1;
+    circle(x,y,26,'#172e4a');ctx.strokeStyle='#aaceea';ctx.lineWidth=2;ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x-15,y+15*s);ctx.lineTo(x+15,y-15*s);ctx.strokeStyle='#ebf8ff';ctx.lineWidth=6;ctx.lineCap='round';ctx.stroke();
+    circle(x-23,y+22,10,'#304d73');ctx.font='bold 12px system-ui';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText(i+1,x-23,y+26);
+  });
+  ctx.save();
+  if(won){ctx.shadowColor='#ffd573';ctx.shadowBlur=30}
+  polygon(Array.from({length:10},(_,i)=>{
+    const a=i*Math.PI/5-Math.PI/2,r=i%2?10:24;
+    return [tx+Math.cos(a)*r,ty+Math.sin(a)*r];
+  }),won?'#ffe292':'#7890a8');ctx.restore();
+  status.textContent=won?'Ёлка горит! Сияние вернулось.':`Игрушки: ${lit.size} из ${toys.length}`;
+}
+function turn(i){angles[i]=!angles[i];draw()}
+mirrors.forEach((_,i)=>{
+  const button=document.createElement('button');
+  button.textContent=i+1;
+  button.setAttribute('aria-label',`Повернуть зеркало ${i+1}`);
+  button.onclick=()=>turn(i);
+  footer.insertBefore(button,status);
+});
+canvas.addEventListener('click',event=>{
+  const bounds=canvas.getBoundingClientRect();
+  const x=(event.clientX-bounds.left)*840/bounds.width;
+  const y=(event.clientY-bounds.top)*480/bounds.height;
+  const i=mirrors.findIndex(cell=>{const [a,b]=point(cell);return Math.hypot(a-x,b-y)<32});
+  if(i>=0)turn(i);
+});
+document.querySelector('#reset').onclick=()=>{angles=[...initial];draw()};
+if(!trace(solution).won || trace(initial).won) throw Error('Некорректная раскладка');
+draw();
+</script>
