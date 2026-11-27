@@ -18,9 +18,9 @@ const start=[0,5];
 const levels=[
   {route:[[6,5],[10,1]], rocks:[], hint:'Нажимай на зеркало, пока луч не попадёт в звезду.'},
   {route:[[3,5],[7,1],[10,1]],rocks:[[6,3]],hint:'Лучи могут идти прямо и по диагонали.'},
-  {route:[[2,5],[2,2],[7,2],[7,4],[10,1]],rocks:[[5,5],[4,4]],hint:'Камни останавливают луч. Найди путь вокруг них.'},
-  {route:[[2,5],[2,1],[5,1],[5,4],[8,4],[8,1],[10,1]],rocks:[[4,5],[6,2],[9,2]],hint:'Начни у фонаря и проследи путь луча до ёлки.'},
-  {route:[[1,5],[4,2],[4,0],[7,0],[7,3],[9,3],[9,2],[10,1]],rocks:[[3,5],[5,3],[8,2],[8,4]],hint:'Настрой все семь зеркал, чтобы вернуть сияние.'}
+  {route:[[2,5],[2,2],[7,2],[7,4],[10,1]],rocks:[[5,5],[4,4]],hint:'Снежные облака гасят луч. Найди путь вокруг них.'},
+  {route:[[2,5],[2,1],[5,1],[5,4],[8,4],[8,1],[10,1]],rocks:[[4,5],[6,2],[9,2]], balls:[[6,4],[8,3]], hint:'Проведи луч через оба шара, а затем направь его в звезду.'},
+  {route:[[1,5],[4,2],[4,0],[7,0],[7,3],[9,3],[9,2],[10,1]],rocks:[[3,5],[5,3],[8,2],[8,4]], movable:4, sockets:[[6,4],[7,3],[6,3]], hint:'Зеркало 5 можно переставить в одну из двух свободных лунок. Затем направь через него луч.'}
 ];
 const same=(a,b)=>a[0]===b[0]&&a[1]===b[1];
 const dir=(a,b)=>directions.findIndex(d=>same(d,[Math.sign(b[0]-a[0]),Math.sign(b[1]-a[1])]));
@@ -31,21 +31,28 @@ for(const level of levels){
   level.solution=level.mirrors.map((mirror,i)=>(dir(route[i],mirror)+dir(mirror,route[i+2]))%8);
   level.initial=level.solution.map((a,i)=>(a+7-(i%3))%8);
 }
-function trace(level,angles){
+function trace(level,angles,socket=0){
+  const mirrors=level.mirrors.map((m,i)=>i===level.movable?level.sockets[socket]:m);
+  const balls=level.balls||[];
+  const lit=new Set();
+  let usedMovable=false;
   let cell=start,d=0;
   const path=[cell],seen=new Set();
   for(let i=0;i<250;i++){
     const [dx,dy]=directions[d];
     cell=[cell[0]+dx,cell[1]+dy];path.push(cell);
-    if(same(cell,level.goal)) return {path,won:true};
+    const ball=balls.findIndex(b=>same(b,cell));
+    if(ball>=0) lit.add(ball);
+    if(same(cell,level.goal)) return {path,lit,won:lit.size===balls.length&&(!level.sockets||(socket!==0&&usedMovable))};
     if(cell[0]<0||cell[0]>11||cell[1]<0||cell[1]>6||level.rocks.some(r=>same(r,cell))) break;
     const key=cell.join(',')+':'+d;
     if(seen.has(key)) break;
     seen.add(key);
-    const mirror=level.mirrors.findIndex(m=>same(m,cell));
+    const mirror=mirrors.findIndex(m=>same(m,cell));
+    if(mirror>=0&&mirror===level.movable) usedMovable=true;
     if(mirror>=0) d=(angles[mirror]-d+8)%8;
   }
-  return {path,won:false};
+  return {path,lit,won:false};
 }
 const canvas=document.querySelector('canvas'), c=canvas.getContext('2d');
 const status=document.querySelector('#status'), next=document.querySelector('#next'), controls=document.querySelector('#controls');
@@ -53,31 +60,43 @@ const nav=document.querySelector('nav'), hint=document.querySelector('#hint');
 const scene=new Image();scene.src='winter.jpg';
 const point=([x,y])=>[68+74*x,89+61*y];
 const flakes=Array.from({length:90},(_,i)=>({x:(i*197)%960,y:(i*119)%540,r:0.7+(i%5)*0.44,s:9+i%27}));
-let index=0, angles, result, badges=[], litAt=null;
+let index=0, angles, result, badges=[], litAt=null, socket=0;
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 function refresh(){
-  result=trace(levels[index],angles);
+  result=trace(levels[index],angles,socket);
   if(result.won && litAt===null) litAt=performance.now();
   if(!result.won) litAt=null;
   status.textContent=result.won?(index===levels.length-1?'Ёлка сияет! Северное сияние вернулось.':'Ёлка зажглась!'):`Уровень ${index+1} из ${levels.length}`;
+  if(!result.won&&levels[index].balls) status.textContent+=` · Шары: ${result.lit.size} из 2`;
   next.hidden=!result.won||index===levels.length-1;
   badges.forEach((button,i)=>button.title=`Наклон ${angles[i]*22.5}°`);
 }
 function turn(i){angles[i]=(angles[i]+1)%8;refresh()}
 function load(i){
-  index=i;angles=[...levels[i].initial];hint.textContent=levels[i].hint;
+  index=i;socket=0;litAt=null;angles=[...levels[i].initial];hint.textContent=levels[i].hint;
   [...nav.children].forEach((button,n)=>button.setAttribute('aria-current',String(n===i)));
   badges=angles.map((_,m)=>{
     const button=document.createElement('button');button.textContent=`Зеркало ${m+1}`;button.onclick=()=>turn(m);return button;
   });
-  controls.replaceChildren(...badges);refresh();
+  controls.replaceChildren(...badges);
+  if(levels[index].sockets){
+    const move=document.createElement('button');
+    move.textContent='Переставить зеркало 5';
+    move.onclick=()=>{socket=(socket+1)%levels[index].sockets.length;refresh()};
+    controls.append(move);
+  }
+  refresh();
 }
 levels.forEach((_,i)=>{const button=document.createElement('button');button.textContent=i+1;button.setAttribute('aria-label',`Уровень ${i+1}`);button.onclick=()=>load(i);nav.append(button)});
 next.onclick=()=>load(index+1);
 document.querySelector('#reset').onclick=()=>load(index);
 canvas.onclick=event=>{
   const r=canvas.getBoundingClientRect(), x=(event.clientX-r.left)*960/r.width,y=(event.clientY-r.top)*540/r.height;
-  const i=levels[index].mirrors.findIndex(m=>{const [a,b]=point(m);return Math.hypot(a-x,b-y)<31});
+  const level=levels[index];
+  const hit=cell=>{const [a,b]=point(cell);return Math.hypot(a-x,b-y)<27};
+  const destination=level.sockets?.findIndex((cell,n)=>n!==socket&&hit(cell))??-1;
+  if(destination>=0){socket=destination;refresh();return}
+  const i=level.mirrors.map((m,j)=>j===level.movable?level.sockets[socket]:m).findIndex(m=>{const [a,b]=point(m);return Math.hypot(a-x,b-y)<31});
   if(i>=0)turn(i);
 };
 function dot(x,y,r,color){c.fillStyle=color;c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill()}
@@ -141,7 +160,10 @@ function frame(time){
   }
   for(const f of flakes) dot((f.x+t*f.s*0.32)%960,(f.y+t*f.s)%540,f.r,'#eff8ff9e');
   for(const rock of levels[index].rocks){
-    const [x,y]=point(rock);c.font='42px system-ui';c.textAlign='center';c.textBaseline='middle';c.fillText('🪨',x,y);
+    const [x,y]=point(rock);
+    glow(x,y,27,'#779dbd');
+    [[-12,1,12],[0,-5,16],[12,2,12]].forEach(([dx,dy,r])=>glow(x+dx,y+dy,r,'#bee0f8c0'));
+    for(let j=0;j<5;j++) dot(x-16+j*8,y+7+(t*10+j*4)%12,1.3,'#e7f4ffbc');
   }
   const ray=result.path.map(point);
   c.save();c.shadowBlur=23;c.shadowColor='#ffcf79';c.lineCap='round';c.lineJoin='round';
@@ -149,7 +171,22 @@ function frame(time){
   c.strokeStyle='#fff4cb';c.lineWidth=2;c.stroke();c.restore();
   const [sx,sy]=point(start);
   glow(sx,sy,32,'#ffc571');c.font='32px system-ui';c.textBaseline='middle';c.textAlign='center';c.fillText('🏮',sx,sy);
-  levels[index].mirrors.forEach((m,i)=>{
+  const level=levels[index];
+  level.sockets?.forEach((cell,n)=>{
+    if(n===socket)return;
+    const [x,y]=point(cell);
+    dot(x,y,19,'#112943ab');
+    c.save();c.setLineDash([4,4]);c.strokeStyle='#a6e0f4';c.lineWidth=2;c.stroke();c.restore();
+  });
+  level.balls?.forEach((cell,n)=>{
+    const [x,y]=point(cell), on=result.lit.has(n), color=n?'#ff8cb1':'#8df5d7';
+    if(on)glow(x,y,29,color);
+    dot(x,y,12,on?color:'#354d68');c.strokeStyle=color;c.lineWidth=1.5;c.stroke();
+    dot(x-4,y-4,3,on?'#fff6de':'#7f98ad');
+    c.fillStyle='#f6cd85';c.fillRect(x-4,y-15,8,4);
+  });
+  level.mirrors.forEach((m,i)=>{
+    if(i===level.movable)m=level.sockets[socket];
     const [x,y]=point(m), a=angles[i]*Math.PI/8;
     dot(x,y,24,'#142941ed');c.strokeStyle='#9cc5db';c.lineWidth=1.5;c.stroke();
     c.save();c.translate(x,y);c.rotate(a);c.fillStyle='#e1f6ff';c.fillRect(-17,-3,34,6);c.fillStyle='#7eaed0';c.fillRect(-17,3,34,3);c.restore();
